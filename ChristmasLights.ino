@@ -1,7 +1,15 @@
 /*EDDIE NOTE THIS IS A COPY OF THE FASTLED-TEST SKETCH AND NEEDS MASSIVE EDITING*/
 
 #include <FastLED.h>
+#include <TimeLib.h>
+#include <WiFi.h>
+#include <stdio.h>
+#include <time.h>
+// #include "ArduinoJson.h"
+#include "RTClib.h"
+#include <StreamUtils.h>
 #include "arduino-secrets.h"
+
 
 //FASTLED_USING_NAMESPACE
 
@@ -15,15 +23,20 @@
 // -Mark Kriegsman, December 2014
 
 
-#define DATA_PIN    27
+#define DATA_PIN_1    27
+#define DATA_PIN_2    33 
 //#define CLK_PIN   4
 #define LED_TYPE    WS2812
 #define COLOR_ORDER GRB
-#define NUM_LEDS    100
-CRGB leds[NUM_LEDS];
-
+#define NUM_LEDS_1    400
+#define NUM_LEDS_2    200
 #define BRIGHTNESS          255  
 #define FRAMES_PER_SECOND  120
+
+
+CRGB leds_1[NUM_LEDS_1];
+CRGB leds_2[NUM_LEDS_2];
+bool debug = true;
 
 void setup() {
   Serial.begin(115200);
@@ -37,10 +50,16 @@ void setup() {
   Serial.flush();
   
   // tell FastLED about the LED strip configuration
-  FastLED.addLeds<LED_TYPE,DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<LED_TYPE,DATA_PIN_1,COLOR_ORDER>(leds_1, NUM_LEDS_1).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<LED_TYPE,DATA_PIN_2,COLOR_ORDER>(leds_2, NUM_LEDS_2).setCorrection(TypicalLEDStrip);
+  
   //FastLED.addLeds<LED_TYPE,DATA_PIN,CLK_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   Serial.println ("2 setup");
   Serial.flush();
+
+
+   Connect_to_Wifi();  // Like it says
+  if (debug) { Print_Wifi_Status(); }
 
   // set master brightness control
   FastLED.setBrightness(BRIGHTNESS);
@@ -51,7 +70,9 @@ void setup() {
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
-SimplePatternList gPatterns = { rainbow, rainbowWithGlitter, confetti, sinelon, juggle, bpm };
+// SimplePatternList gPatterns = { rainbow, rainbowWithGlitter, confetti, sinelon, juggle, bpm };
+SimplePatternList gPatterns = { rainbow, rainbowWithGlitter, confetti, sinelon };
+
 
 uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
 uint8_t gHue = 0; // rotating "base color" used by many of the patterns
@@ -61,6 +82,8 @@ void loop()
   Serial.println ("Top of loop");
   // Call the current pattern function once, updating the 'leds' array
   gPatterns[gCurrentPatternNumber]();
+  Serial.print (gCurrentPatternNumber);
+  Serial.println("");
 
   // send the 'leds' array out to the actual LED strip
   FastLED.show();  
@@ -83,7 +106,8 @@ void nextPattern()
 void rainbow() 
 {
   // FastLED's built-in rainbow generator
-  fill_rainbow( leds, NUM_LEDS, gHue, 7);
+  fill_rainbow( leds_1, NUM_LEDS_1, gHue, 7);
+  fill_rainbow( leds_2, NUM_LEDS_2, gHue, 7);
 }
 
 void rainbowWithGlitter() 
@@ -96,45 +120,97 @@ void rainbowWithGlitter()
 void addGlitter( fract8 chanceOfGlitter) 
 {
   if( random8() < chanceOfGlitter) {
-    leds[ random16(NUM_LEDS) ] += CRGB::White;
+    leds_1[ random16(NUM_LEDS_1) ] += CRGB::White;
+    leds_2[ random16(NUM_LEDS_2) ] += CRGB::White;
   }
 }
 
 void confetti() 
 {
   // random colored speckles that blink in and fade smoothly
-  fadeToBlackBy( leds, NUM_LEDS, 10);
-  int pos = random16(NUM_LEDS);
-  leds[pos] += CHSV( gHue + random8(64), 200, 255);
+  fadeToBlackBy( leds_1, NUM_LEDS_1, 10);
+  int pos1 = random16(NUM_LEDS_1);
+  leds_1[pos1] += CHSV( gHue + random8(64), 200, 255);
+
+  fadeToBlackBy( leds_2, NUM_LEDS_2, 10);
+  int pos2 = random16(NUM_LEDS_2);
+  leds_2[pos2] += CHSV( gHue + random8(64), 200, 255);
 }
 
 void sinelon()
 {
   // a colored dot sweeping back and forth, with fading trails
-  fadeToBlackBy( leds, NUM_LEDS, 20);
-  int pos = beatsin16( 13, 0, NUM_LEDS-1 );
-  leds[pos] += CHSV( gHue, 255, 192);
+  fadeToBlackBy( leds_1, NUM_LEDS_1, 20);
+  int pos1 = beatsin16( 13, 0, NUM_LEDS_1-1 );
+  leds_1[pos1] += CHSV( gHue, 255, 192);
+
+  fadeToBlackBy( leds_2, NUM_LEDS_2, 20);
+  int pos2 = beatsin16( 13, 0, NUM_LEDS_2-1 );
+  leds_2[pos2] += CHSV( gHue, 255, 192);
 }
 
+
+void Connect_to_Wifi() {
+  int status = WL_IDLE_STATUS;
+  Serial.print("Attempting to connect to WiFi, ");
+  Serial.print("SSID ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, pass);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+}
+
+void Print_Wifi_Status() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+  // print your board's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
+
+/*
 void bpm()
 {
   // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
   uint8_t BeatsPerMinute = 62;
   CRGBPalette16 palette = PartyColors_p;
   uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
-  for( int i = 0; i < NUM_LEDS; i++) { //9948
-    leds[i] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
+  for( int i = 0; i < NUM_LEDS_1; i++) { //9948
+    leds_1[i] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
   }
+  for( int i = 0; i < NUM_LEDS_2; i++) { //9948
+    leds_2[i] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
+  }
+
 }
 
 void juggle() {
   // eight colored dots, weaving in and out of sync with each other
-  fadeToBlackBy( leds, NUM_LEDS, 20);
+  fadeToBlackBy( leds_1, NUM_LEDS_1, 20);
   uint8_t dothue = 0;
   for( int i = 0; i < 8; i++) {
-    leds[beatsin16( i+7, 0, NUM_LEDS-1 )] |= CHSV(dothue, 200, 255);
+    leds_1[beatsin16( i+7, 0, NUM_LEDS_1-1 )] |= CHSV(dothue, 200, 255);
     dothue += 32;
   }
+
+fadeToBlackBy( leds_2, NUM_LEDS_2 20);
+  uint8_t dothue = 0;
+  for( int i = 0; i < 8; i++) {
+    leds_2[beatsin16( i+7, 0, NUM_LEDS_2-1 )] |= CHSV(dothue, 200, 255);
+    dothue += 32;
+  }
+
+
 }
 
 
+*/

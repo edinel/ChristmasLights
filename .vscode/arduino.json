@@ -1,3 +1,7 @@
 {
-    "port": "/dev/tty.usbserial-56470102941"
+    "port": "/dev/tty.wchusbserial56470102941",
+    "board": "espressif:esp32:adafruit_feather_esp32_v2",
+    "programmer": "atmel_ice",
+    "sketch": "ChristmasLights.ino",
+    "configuration": "LoopCore=1,EventsCore=1,PSRAM=enabled,PartitionScheme=default_8MB,CPUFreq=240,FlashFreq=80,FlashSize=8M,UploadSpeed=921600,DebugLevel=none,EraseFlash=none"
 }
