@@ -5,11 +5,15 @@
 #include <WiFi.h>
 #include <stdio.h>
 #include <time.h>
-// #include "ArduinoJson.h"
-#include "RTClib.h"
-#include <StreamUtils.h>
 #include "arduino-secrets.h"
-
+#ifdef ESP32
+  #include <WiFi.h>
+  #include <AsyncTCP.h>
+#else
+  #include <ESP8266WiFi.h>
+  #include <ESPAsyncTCP.h>
+#endif
+#include <ESPAsyncWebServer.h>
 
 //FASTLED_USING_NAMESPACE
 
@@ -32,6 +36,7 @@
 #define NUM_LEDS_2    200
 #define BRIGHTNESS          255  
 #define FRAMES_PER_SECOND  120
+#define NUM_FUNCTIONS 4
 
 CRGB leds_1[NUM_LEDS_1];
 CRGB leds_2[NUM_LEDS_2];
@@ -39,6 +44,8 @@ bool debug = true;
 #define hostname "BackYard-Xmas-Arduino"
 
 void setup() {
+  
+  // SET UP SERIAL
   Serial.begin(115200);
     while (!Serial) {
       ;  // wait for serial port to connect. Needed for native USB port only
@@ -49,29 +56,34 @@ void setup() {
   Serial.println ("1 setup");
   Serial.flush();
   
-  // tell FastLED about the LED strip configuration
+
+  // SET UP LEDS tell FastLED about the LED strip configuration
   FastLED.addLeds<LED_TYPE,DATA_PIN_1,COLOR_ORDER>(leds_1, NUM_LEDS_1).setCorrection(TypicalLEDStrip);
-  FastLED.addLeds<LED_TYPE,DATA_PIN_2,COLOR_ORDER>(leds_2, NUM_LEDS_2).setCorrection(TypicalLEDStrip);
-  
+  FastLED.addLeds<LED_TYPE,DATA_PIN_2,COLOR_ORDER>(leds_2, NUM_LEDS_2).setCorrection(TypicalLEDStrip);  
+  FastLED.setBrightness(BRIGHTNESS); // set master brightness control
   //FastLED.addLeds<LED_TYPE,DATA_PIN,CLK_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
-  Serial.println ("2 setup");
-  Serial.flush();
-
-
+  
+  
+  // SET UP WIFI 
    Connect_to_Wifi();  // Like it says
   if (debug) { Print_Wifi_Status(); }
   sleep (20);
-  // set master brightness control
-  FastLED.setBrightness(BRIGHTNESS);
+  
+  
+  
+  
+  
   Serial.println ("Exting setup");
   Serial.flush();
+
+
 }
 
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 // SimplePatternList gPatterns = { rainbow, rainbowWithGlitter, confetti, sinelon, juggle, bpm };
-SimplePatternList gPatterns = { rainbow, rainbowWithGlitter, confetti, sinelon };
+// SimplePatternList gPatterns = { rainbow, rainbowWithGlitter, confetti, sinelon };
 
 
 uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
@@ -81,9 +93,24 @@ void loop()
 {
   Serial.println ("Top of loop");
   // Call the current pattern function once, updating the 'leds' array
-  gPatterns[gCurrentPatternNumber]();
-  Serial.print (gCurrentPatternNumber);
-  Serial.println("");
+  //gPatterns[gCurrentPatternNumber](); //this is a clever "oh no switch statements scare me" bit.  Casting a string as the name of a function?  come on.
+  Serial.println (gCurrentPatternNumber);
+  
+  switch(gCurrentPatternNumber){
+    case 1:
+      rainbow();
+      break;
+    case 2:
+      rainbowWithGlitter();
+      break;
+    case 3:
+      confetti();
+      break;
+    case 4:
+      sinelon();
+      break;
+    }
+
 
   // send the 'leds' array out to the actual LED strip
   FastLED.show();  
@@ -100,7 +127,7 @@ void loop()
 void nextPattern()
 {
   // add one to the current pattern number, and wrap around at the end
-  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE( gPatterns);
+  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % NUM_FUNCTIONS;
 }
 
 void rainbow() 
