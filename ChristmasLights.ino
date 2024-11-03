@@ -33,10 +33,10 @@
 #define BRIGHTNESS          255  
 #define FRAMES_PER_SECOND  120
 
-
 CRGB leds_1[NUM_LEDS_1];
 CRGB leds_2[NUM_LEDS_2];
 bool debug = true;
+#define hostname "BackYard-Xmas-Arduino"
 
 void setup() {
   Serial.begin(115200);
@@ -60,7 +60,7 @@ void setup() {
 
    Connect_to_Wifi();  // Like it says
   if (debug) { Print_Wifi_Status(); }
-
+  sleep (20);
   // set master brightness control
   FastLED.setBrightness(BRIGHTNESS);
   Serial.println ("Exting setup");
@@ -155,6 +155,7 @@ void Connect_to_Wifi() {
   Serial.print("Attempting to connect to WiFi, ");
   Serial.print("SSID ");
   Serial.println(ssid);
+  WiFi.setHostname(hostname);
   WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -211,6 +212,27 @@ fadeToBlackBy( leds_2, NUM_LEDS_2 20);
 
 
 }
+
+
+*/
+
+
+// HTML Code Ideas
+/*
+
+<a href="KFC.html" class="button">KFC</a>
+ <a href="Pizza_hut.html" class="button">Pizza hut</a>
+ 
+ 
+ 
+ a.button { 
+   display: inline-block;
+   padding: 5px;
+   border: 1px solid #999;
+   background: #aaa;
+   color: #333;
+   text-decoration: none;
+ }
 
 
 */
