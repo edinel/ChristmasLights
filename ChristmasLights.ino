@@ -1,4 +1,3 @@
-/*EDDIE NOTE THIS IS A COPY OF THE FASTLED-TEST SKETCH AND NEEDS MASSIVE EDITING*/
 
 #include <FastLED.h>
 #include <TimeLib.h>
@@ -6,6 +5,7 @@
 #include <stdio.h>
 #include <time.h>
 #include "arduino-secrets.h"
+#include <Adafruit_NeoPixel.h>
 #ifdef ESP32
   #include <WiFi.h>
   #include <AsyncTCP.h>
@@ -26,6 +26,10 @@
 //
 // -Mark Kriegsman, December 2014
 
+#define NUMPIXELS 1
+#define DELAYVAL 2
+
+
 
 #define DATA_PIN_1    27
 #define DATA_PIN_2    33 
@@ -38,10 +42,89 @@
 #define FRAMES_PER_SECOND  120
 #define NUM_FUNCTIONS 4
 
+
+
 CRGB leds_1[NUM_LEDS_1];
 CRGB leds_2[NUM_LEDS_2];
 bool debug = true;
 #define hostname "BackYard-Xmas-Arduino"
+
+const int output = 13;
+const int buttonPin = BUTTON;
+// Variables will change:
+int ledState = LOW;         // the current state of the output pin
+int buttonState = LOW;       // the current reading from the input pin
+int lastButtonState = LOW;   // the previous reading from the input pin
+const char* PARAM_INPUT_1 = "state";
+
+Adafruit_NeoPixel pixels(1, PIN_NEOPIXEL, NEO_GRBW + NEO_KHZ800);
+
+// the following variables are unsigned longs because the time, measured in
+// milliseconds, will quickly become a bigger number than can be stored in an int.
+unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
+unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
+
+// Create AsyncWebServer object on port 80
+AsyncWebServer server(80);
+
+
+
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE HTML><html>
+<head>
+  <title>ESP Web Server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html {font-family: Arial; display: inline-block; text-align: center;}
+    h2 {font-size: 3.0rem;}
+    p {font-size: 3.0rem;}
+    body {max-width: 600px; margin:0px auto; padding-bottom: 25px;}
+    .switch {position: relative; display: inline-block; width: 120px; height: 68px} 
+    .switch input {display: none}
+    .slider {position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; border-radius: 34px}
+    .slider:before {position: absolute; content: ""; height: 52px; width: 52px; left: 8px; bottom: 8px; background-color: #fff; -webkit-transition: .4s; transition: .4s; border-radius: 68px}
+    input:checked+.slider {background-color: #2196F3}
+    input:checked+.slider:before {-webkit-transform: translateX(52px); -ms-transform: translateX(52px); transform: translateX(52px)}
+  </style>
+</head>
+<body>
+  <h2>ESP Web Server</h2>
+  %BUTTONPLACEHOLDER%
+<script>function toggleCheckbox(element) {
+  var xhr = new XMLHttpRequest();
+  if(element.checked){ xhr.open("GET", "/update?state=1", true); }
+  else { xhr.open("GET", "/update?state=0", true); }
+  xhr.send();
+}
+
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      var inputChecked;
+      var outputStateM;
+      if( this.responseText == 1){ 
+        inputChecked = true;
+        outputStateM = "On";
+      }
+      else { 
+        inputChecked = false;
+        outputStateM = "Off";
+      }
+      document.getElementById("output").checked = inputChecked;
+      document.getElementById("outputState").innerHTML = outputStateM;
+    }
+  };
+  xhttp.open("GET", "/state", true);
+  xhttp.send();
+}, 1000 ) ;
+</script>
+</body>
+</html>
+)rawliteral";
+
+
+
 
 void setup() {
   
@@ -67,12 +150,42 @@ void setup() {
   // SET UP WIFI 
    Connect_to_Wifi();  // Like it says
   if (debug) { Print_Wifi_Status(); }
-  sleep (20);
-  
-  
-  
-  
-  
+  sleep (10);
+  pinMode(buttonPin, INPUT);
+  // SET UP WEB SERVER 
+
+  // Route for root / web page
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", index_html, processor);
+  });
+
+  // Send a GET request to <ESP_IP>/update?state=<inputMessage>
+  server.on("/update", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    String inputMessage;
+    String inputParam;
+    // GET input1 value on <ESP_IP>/update?state=<inputMessage>
+    if (request->hasParam(PARAM_INPUT_1)) {
+      inputMessage = request->getParam(PARAM_INPUT_1)->value();
+      inputParam = PARAM_INPUT_1;
+      ledState = !ledState; //Switch the LED state
+    }
+    else {
+      inputMessage = "No message sent";
+      inputParam = "none";
+    }
+    Serial.print("here...");
+    Serial.println(inputMessage);
+    request->send(200, "text/plain", "OK");
+  });
+
+  // Send a GET request to <ESP_IP>/state
+  server.on("/state", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", String(ledState).c_str());
+  });
+  // Start server
+  server.begin();
+
+
   Serial.println ("Exting setup");
   Serial.flush();
 
@@ -91,11 +204,66 @@ uint8_t gHue = 0; // rotating "base color" used by many of the patterns
   
 void loop()
 {
-  Serial.println ("Top of loop");
+  //Serial.println ("Top of loop");
+
+  pixels.clear();
+  if (ledState == 1){
+    for(int i=0; i<NUMPIXELS; i++) {
+      pixels.setPixelColor(i, pixels.Color(0, 25, 0));
+      pixels.show();
+      delay(DELAYVAL);
+    }
+  }else{
+    pixels.clear();
+    pixels.show();
+  }
+
+  int reading = !digitalRead(buttonPin); //when button pushed, reading is 1
+  if (reading){
+    Serial.print("Here ");
+    Serial.println (reading);
+
+  }
+
+  // check to see if you just pressed the button
+  // (i.e. the input went from LOW to HIGH), and you've waited long enough
+  // since the last press to ignore any noise:
+
+  // If the switch changed, due to noise or pressing:
+  if (reading != lastButtonState) {
+    // reset the debouncing timer
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    // whatever the reading is at, it's been there for longer than the debounce
+    // delay, so take it as the actual current state:
+
+    // if the button state has changed:
+    if (reading != buttonState) {
+      buttonState = reading;
+
+      // only toggle the LED if the new button state is HIGH
+      if (buttonState == HIGH) {
+        ledState = !ledState;
+      }
+    }
+  }
+  // digitalWrite(output, ledState);
+  // save the reading. Next time through the loop, it'll be the lastButtonState:
+  lastButtonState = reading;
+
+// BELOW THIS IS ALL THE FAST LED STUFF
+
   // Call the current pattern function once, updating the 'leds' array
   //gPatterns[gCurrentPatternNumber](); //this is a clever "oh no switch statements scare me" bit.  Casting a string as the name of a function?  come on.
-  Serial.println (gCurrentPatternNumber);
+ // Serial.print ("gCurrentPatternNumber");
+ // Serial.println (gCurrentPatternNumber);
   
+ // Serial.println ("After first pixels invoke");
+
+
+
   switch(gCurrentPatternNumber){
     case 1:
       rainbow();
@@ -111,11 +279,10 @@ void loop()
       break;
     }
 
-
   // send the 'leds' array out to the actual LED strip
-  FastLED.show();  
+//  FastLED.show();  
   // insert a delay to keep the framerate modest
-  FastLED.delay(1000/FRAMES_PER_SECOND); 
+//  FastLED.delay(1000/FRAMES_PER_SECOND); 
 
   // do some periodic updates
   EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
@@ -188,6 +355,8 @@ void Connect_to_Wifi() {
     delay(500);
     Serial.print(".");
   }
+    Serial.println(WiFi.localIP());
+
 }
 
 void Print_Wifi_Status() {
@@ -204,6 +373,66 @@ void Print_Wifi_Status() {
   Serial.print(rssi);
   Serial.println(" dBm");
 }
+
+
+
+
+
+// Replaces placeholder with button section in your web page
+String processor(const String& var){
+  //Serial.println(var);
+  if(var == "BUTTONPLACEHOLDER"){
+    String buttons ="";
+    String outputStateValue = outputState();
+    buttons+= "<h4>Output - GPIO 2 - State <span id=\"outputState\"></span></h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"output\" " + outputStateValue + "><span class=\"slider\"></span></label>";
+    return buttons;
+  }
+  return String();
+}
+
+String outputState(){
+  if (ledState == 1){
+    Serial.println ("checked");
+    return "checked";
+  }
+  else {
+
+    Serial.println ("UNchecked");
+    return "";
+  }
+  return "";
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
 void bpm()
@@ -263,3 +492,4 @@ fadeToBlackBy( leds_2, NUM_LEDS_2 20);
 
 
 */
+
