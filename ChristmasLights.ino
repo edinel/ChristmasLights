@@ -27,7 +27,7 @@
 // -Mark Kriegsman, December 2014
 
 #define NUMPIXELS 1
-#define DELAYVAL 2
+#define DELAYVAL 0
 
 
 
@@ -53,9 +53,11 @@ const int output = 13;
 const int buttonPin = BUTTON;
 // Variables will change:
 int ledState = LOW;         // the current state of the output pin
+String ledColor = "off";
 int buttonState = LOW;       // the current reading from the input pin
 int lastButtonState = LOW;   // the previous reading from the input pin
-const char* PARAM_INPUT_1 = "state";
+const char* PARAM_INPUT_1 = "color";
+String litLED = "off";
 
 Adafruit_NeoPixel pixels(1, PIN_NEOPIXEL, NEO_GRBW + NEO_KHZ800);
 
@@ -72,53 +74,42 @@ AsyncWebServer server(80);
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
-  <title>ESP Web Server</title>
+  <title>Eddie's Web Server</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     html {font-family: Arial; display: inline-block; text-align: center;}
-    h2 {font-size: 3.0rem;}
+    h2 {font-size: 4.0rem;}
     p {font-size: 3.0rem;}
     body {max-width: 600px; margin:0px auto; padding-bottom: 25px;}
     .switch {position: relative; display: inline-block; width: 120px; height: 68px} 
     .switch input {display: none}
     .slider {position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; border-radius: 34px}
     .slider:before {position: absolute; content: ""; height: 52px; width: 52px; left: 8px; bottom: 8px; background-color: #fff; -webkit-transition: .4s; transition: .4s; border-radius: 68px}
-    input:checked+.slider {background-color: #2196F3}
+    input:checked+.slider {background-color: green}
     input:checked+.slider:before {-webkit-transform: translateX(52px); -ms-transform: translateX(52px); transform: translateX(52px)}
-  </style>
+   </style>
 </head>
 <body>
-  <h2>ESP Web Server</h2>
+  <h2>Eddie's Web Server</h2>
   %BUTTONPLACEHOLDER%
-<script>function toggleCheckbox(element) {
-  var xhr = new XMLHttpRequest();
-  if(element.checked){ xhr.open("GET", "/update?state=1", true); }
-  else { xhr.open("GET", "/update?state=0", true); }
-  xhr.send();
-}
 
-setInterval(function ( ) {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      var inputChecked;
-      var outputStateM;
-      if( this.responseText == 1){ 
-        inputChecked = true;
-        outputStateM = "On";
+  <p id="output"></p>
+
+  <script>
+    const radioButtons = document.querySelectorAll('input[name="selector"]');
+    for(const radioButton of radioButtons){
+      radioButton.addEventListener('change', showSelected);
+    }        
+    function showSelected(e) {
+      var callback = new XMLHttpRequest();
+      if (this.checked) {
+        document.querySelector('#output').innerText = `You selected ${this.value}`;
+        callback.open("GET", "/update?color="+this.value, true); 
+        callback.send();
       }
-      else { 
-        inputChecked = false;
-        outputStateM = "Off";
-      }
-      document.getElementById("output").checked = inputChecked;
-      document.getElementById("outputState").innerHTML = outputStateM;
+      console.log(e);
     }
-  };
-  xhttp.open("GET", "/state", true);
-  xhttp.send();
-}, 1000 ) ;
-</script>
+  </script>
 </body>
 </html>
 )rawliteral";
@@ -164,17 +155,16 @@ void setup() {
     String inputMessage;
     String inputParam;
     // GET input1 value on <ESP_IP>/update?state=<inputMessage>
-    if (request->hasParam(PARAM_INPUT_1)) {
-      inputMessage = request->getParam(PARAM_INPUT_1)->value();
-      inputParam = PARAM_INPUT_1;
-      ledState = !ledState; //Switch the LED state
+    if (request->hasParam("color")) {
+      inputMessage = request->getParam("color")->value();
+      Serial.println ("I hear that the color is " + inputMessage);
+      ledColor = inputMessage; //Switch the LED state
     }
     else {
       inputMessage = "No message sent";
       inputParam = "none";
+      Serial.println ("Got the wrong answer");
     }
-    Serial.print("here...");
-    Serial.println(inputMessage);
     request->send(200, "text/plain", "OK");
   });
 
@@ -204,19 +194,24 @@ uint8_t gHue = 0; // rotating "base color" used by many of the patterns
   
 void loop()
 {
+  uint32_t thePixelColor = pixels.Color(0, 0, 0);
   //Serial.println ("Top of loop");
+  if (ledColor == "red"){
+    thePixelColor = pixels.Color (50,0,0);
+  }else if (ledColor == "blue"){
+    thePixelColor = pixels.Color (0,0,50);
+  }else if (ledColor == "green"){
+    thePixelColor = pixels.Color (0,50,0);
+  }else{ 
+    thePixelColor = pixels.Color (0,0,0);
+  }
 
   pixels.clear();
-  if (ledState == 1){
-    for(int i=0; i<NUMPIXELS; i++) {
-      pixels.setPixelColor(i, pixels.Color(0, 25, 0));
+  for(int i=0; i<NUMPIXELS; i++) {
+    pixels.setPixelColor(i, thePixelColor);
       pixels.show();
       delay(DELAYVAL);
     }
-  }else{
-    pixels.clear();
-    pixels.show();
-  }
 
   int reading = !digitalRead(buttonPin); //when button pushed, reading is 1
   if (reading){
@@ -380,20 +375,42 @@ void Print_Wifi_Status() {
 
 // Replaces placeholder with button section in your web page
 String processor(const String& var){
-  //Serial.println(var);
   if(var == "BUTTONPLACEHOLDER"){
-    String buttons ="";
+  /*  String buttons ="";
+    
     String outputStateValue = outputState();
-    buttons+= "<h4>Output - GPIO 2 - State <span id=\"outputState\"></span></h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"output\" " + outputStateValue + "><span class=\"slider\"></span></label>";
+    buttons+= "<h4>Output - Green LED is <span id=\"outputState\"></span></h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"output\" " + outputStateValue + "><span class=\"slider\"></span></label>";
+    return buttons;
+  }*/
+    String buttons = "";
+    buttons += "<div class=\"radio-toolbar\">\n";
+    buttons += "<input type=\"radio\" id=\"off\" name=\"selector\" value=\"off\" " + isThisOn("off");
+    buttons += ">\n";
+    buttons += "<label for=\"blue\">Off</label>\n";
+
+    buttons += "<input type=\"radio\" id=\"blue\" name=\"selector\" value=\"blue\" " + isThisOn("blue");
+    buttons += ">\n";
+    buttons += "<label for=\"blue\">Blue</label>\n";
+
+    buttons += "<input type=\"radio\" id=\"green\" name=\"selector\" value=\"green\" " + isThisOn("green");
+    buttons += ">\n";
+    buttons += "<label for=\"green\">Green</label>\n";
+
+    buttons += "<input type=\"radio\" id=\"red\" name=\"selector\" value=\"red\" " + isThisOn("red");
+    buttons += ">\n";
+    buttons += "<label for=\"red\">Red</label>\n";
+    
+    buttons += "<p>";
+
     return buttons;
   }
   return String();
 }
 
-String outputState(){
+String outputState(int number){
   if (ledState == 1){
     Serial.println ("checked");
-    return "checked";
+    return "checked ";
   }
   else {
 
@@ -403,11 +420,27 @@ String outputState(){
   return "";
 }
 
+String isThisOn (String color){
+  if (color == litLED){
+    return "checked";
+  }else{
+    return "";
+  }
+}
 
 
 
+/*<div class="radio-toolbar">
+  <input type="radio" id="radio1" name="radios" value="all" checked>
+  <label for="radio1">All</label>
 
+  <input type="radio" id="radio2" name="radios" value="false">
+  <label for="radio2">Open</label>
 
+  <input type="radio" id="radio3" name="radios" value="true">
+  <label for="radio3">Archived</label>
+</div>
+*/
 
 
 
