@@ -15,6 +15,7 @@
 #endif
 #include <ESPAsyncWebServer.h>
 
+
 //FASTLED_USING_NAMESPACE
 
 // FastLED "100-lines-of-code" demo reel, showing just a few 
@@ -57,7 +58,6 @@ String ledColor = "off";
 int buttonState = LOW;       // the current reading from the input pin
 int lastButtonState = LOW;   // the previous reading from the input pin
 const char* PARAM_INPUT_1 = "color";
-String litLED = "off";
 
 Adafruit_NeoPixel pixels(1, PIN_NEOPIXEL, NEO_GRBW + NEO_KHZ800);
 
@@ -148,6 +148,7 @@ void setup() {
   // Route for root / web page
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html, processor);
+    Serial.println ("Color appears to be " + ledColor);
   });
 
   // Send a GET request to <ESP_IP>/update?state=<inputMessage>
@@ -421,7 +422,7 @@ String outputState(int number){
 }
 
 String isThisOn (String color){
-  if (color == litLED){
+  if (color == ledColor){
     return "checked";
   }else{
     return "";
