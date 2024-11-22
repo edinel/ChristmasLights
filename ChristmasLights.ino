@@ -6,14 +6,11 @@
 #include <time.h>
 #include "arduino-secrets.h"
 #include <Adafruit_NeoPixel.h>
-#ifdef ESP32
-  #include <WiFi.h>
-  #include <AsyncTCP.h>
-#else
-  #include <ESP8266WiFi.h>
-  #include <ESPAsyncTCP.h>
-#endif
-#include <ESPAsyncWebServer.h>
+#include <PsychicHttp.h>
+#include <TemplatePrinter.h>
+
+#include "String_Constants.h"
+
 
 
 //FASTLED_USING_NAMESPACE
@@ -67,7 +64,7 @@ unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
 unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
 
 // Create AsyncWebServer object on port 80
-AsyncWebServer server(80);
+PsychicHttpServer server;
 
 
 
@@ -77,22 +74,13 @@ const char index_html[] PROGMEM = R"rawliteral(
   <title>Eddie's Web Server</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    html {font-family: Arial; display: inline-block; text-align: center;}
-    h2 {font-size: 4.0rem;}
-    p {font-size: 3.0rem;}
-    body {max-width: 600px; margin:0px auto; padding-bottom: 25px;}
-    .switch {position: relative; display: inline-block; width: 120px; height: 68px} 
-    .switch input {display: none}
-    .slider {position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; border-radius: 34px}
-    .slider:before {position: absolute; content: ""; height: 52px; width: 52px; left: 8px; bottom: 8px; background-color: #fff; -webkit-transition: .4s; transition: .4s; border-radius: 68px}
-    input:checked+.slider {background-color: green}
-    input:checked+.slider:before {-webkit-transform: translateX(52px); -ms-transform: translateX(52px); transform: translateX(52px)}
-   </style>
+  </style>
 </head>
 <body>
   <h2>Eddie's Web Server</h2>
-  %BUTTONPLACEHOLDER%
+  %BUTTON_TWO%
 
+  %BOUNCER%
   <p id="output"></p>
 
   <script>
@@ -124,9 +112,6 @@ void setup() {
     while (!Serial) {
       ;  // wait for serial port to connect. Needed for native USB port only
     }
-  Serial.println ("0 setup");
-  Serial.flush();
-  delay(3000); // 3 second delay for recovery
   Serial.println ("1 setup");
   Serial.flush();
   
@@ -141,42 +126,55 @@ void setup() {
   // SET UP WIFI 
    Connect_to_Wifi();  // Like it says
   if (debug) { Print_Wifi_Status(); }
-  sleep (10);
+  sleep (3);
   pinMode(buttonPin, INPUT);
   // SET UP WEB SERVER 
+  server.listen(80);
 
   // Route for root / web page
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", index_html, processor);
-    Serial.println ("Color appears to be " + ledColor);
+  
+
+  server.on ("/", HTTP_GET, [](PsychicRequest *request) 
+  {
+    PsychicStreamResponse response(request, "text/html");
+    response.beginSend();
+    TemplatePrinter printer(response, RadioProcessor);  
+    printer.print (index_html);
+    printer.flush();
+    return response.endSend();
   });
 
   // Send a GET request to <ESP_IP>/update?state=<inputMessage>
-  server.on("/update", HTTP_GET, [] (AsyncWebServerRequest *request) {
+server.on ("/update", HTTP_GET, [](PsychicRequest *request) 
+{
+    PsychicStreamResponse response(request, "text/html");
+    response.beginSend();
     String inputMessage;
     String inputParam;
     // GET input1 value on <ESP_IP>/update?state=<inputMessage>
-    if (request->hasParam("color")) {
+    if (request->hasParam("color")) 
+    {
       inputMessage = request->getParam("color")->value();
       Serial.println ("I hear that the color is " + inputMessage);
       ledColor = inputMessage; //Switch the LED state
-    }
-    else {
+      Serial.println ("set color to" + ledColor);
+    }else{
       inputMessage = "No message sent";
       inputParam = "none";
       Serial.println ("Got the wrong answer");
     }
-    request->send(200, "text/plain", "OK");
-  });
+    request->reply(200, "text/plain", "OK");
+    return response.endSend();
+});
 
+/*
   // Send a GET request to <ESP_IP>/state
-  server.on("/state", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(ledState).c_str());
+  server.on("/state", HTTP_GET, [] (PsychicRequest *request) {
+    request->reply(200, "text/plain", String(ledState).c_str());
   });
   // Start server
-  server.begin();
 
-
+*/
   Serial.println ("Exting setup");
   Serial.flush();
 
@@ -195,8 +193,8 @@ uint8_t gHue = 0; // rotating "base color" used by many of the patterns
   
 void loop()
 {
+ 
   uint32_t thePixelColor = pixels.Color(0, 0, 0);
-  //Serial.println ("Top of loop");
   if (ledColor == "red"){
     thePixelColor = pixels.Color (50,0,0);
   }else if (ledColor == "blue"){
@@ -210,9 +208,9 @@ void loop()
   pixels.clear();
   for(int i=0; i<NUMPIXELS; i++) {
     pixels.setPixelColor(i, thePixelColor);
-      pixels.show();
-      delay(DELAYVAL);
-    }
+    delay(DELAYVAL);
+  }
+  pixels.show();
 
   int reading = !digitalRead(buttonPin); //when button pushed, reading is 1
   if (reading){
@@ -375,38 +373,74 @@ void Print_Wifi_Status() {
 
 
 // Replaces placeholder with button section in your web page
-String processor(const String& var){
-  if(var == "BUTTONPLACEHOLDER"){
-  /*  String buttons ="";
-    
-    String outputStateValue = outputState();
-    buttons+= "<h4>Output - Green LED is <span id=\"outputState\"></span></h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"output\" " + outputStateValue + "><span class=\"slider\"></span></label>";
-    return buttons;
-  }*/
-    String buttons = "";
-    buttons += "<div class=\"radio-toolbar\">\n";
-    buttons += "<input type=\"radio\" id=\"off\" name=\"selector\" value=\"off\" " + isThisOn("off");
-    buttons += ">\n";
-    buttons += "<label for=\"blue\">Off</label>\n";
+bool RadioProcessor (Print& output, const char *param){
+  if (strcmp(param, "CSS")== 0){
+    output.print (CSS_CODE);
+    Serial.println ("CSS");
+  }else if (strcmp (param, "BUTTONPLACEHOLDER") == 0){
+    output.print ("");
+    output.print ("<div class=\"radio-toolbar\">\n");
+    output.print ("<input type=\"radio\" id=\"off\" name=\"selector\" value=\"off\" ");
+    output.print (isThisOn("off"));
+    output.print (">\n");
 
-    buttons += "<input type=\"radio\" id=\"blue\" name=\"selector\" value=\"blue\" " + isThisOn("blue");
-    buttons += ">\n";
-    buttons += "<label for=\"blue\">Blue</label>\n";
+    output.print ("<label for=\"blue\">Off</label>\n");
+    output.print ("<input type=\"radio\" id=\"blue\" name=\"selector\" value=\"blue\" ");
+    output.print (isThisOn("blue"));
+    output.print (">\n");
+    output.print ("<label for=\"blue\">Blue</label>\n");
 
-    buttons += "<input type=\"radio\" id=\"green\" name=\"selector\" value=\"green\" " + isThisOn("green");
-    buttons += ">\n";
-    buttons += "<label for=\"green\">Green</label>\n";
+    output.print ("<input type=\"radio\" id=\"green\" name=\"selector\" value=\"green\" ");
+    output.print (isThisOn("green"));
+    output.print (">\n");
+    output.print ("<label for=\"green\">Green</label>\n");
 
-    buttons += "<input type=\"radio\" id=\"red\" name=\"selector\" value=\"red\" " + isThisOn("red");
-    buttons += ">\n";
-    buttons += "<label for=\"red\">Red</label>\n";
-    
-    buttons += "<p>";
+    output.print ("<input type=\"radio\" id=\"red\" name=\"selector\" value=\"red\" ");
+    output.print (isThisOn("red"));
+    output.print (">\n");
+    output.print ("<label for=\"red\">Red</label>\n");
+    output.print ("<p>");
+    return true;
+  }else if (strcmp (param, "BUTTON_TWO")==0 ){
+    output.print("<div class='content'> \n <h3>Ripple animation on  input type radio and Checkbox</h3>");
+    output.print("<div class=\"dpx\">\n");
+    output.print("<div class=\'py\'>");
+    output.print("<label>");
+    output.print("<input type=\"radio\" class=\"option-input radio\" value=\"off\" name=\"Off\" ");
+    output.print (isThisOn("off"));
+    output.print("/>");
+    output.print("Off\n");
+    output.print ("</label>\n");
+    output.print("<label>");
+    output.print("<input type=\"radio\" class=\"option-input radio\" value=\"red\" name=\"Red\" ");
+    output.print (isThisOn("red"));
+    output.print("/>");
+    output.print("Red\n");
+    output.print ("</label>\n");
+    output.print("<label>");
+    output.print("<input type=\"radio\" class=\"option-input radio\" value=\"Green\" name=\"Green\" ");
+    output.print (isThisOn("green"));
+    output.print("/>");
+    output.print("Green\n");
+    output.print ("</label>\n");
+    output.print("<label>");
+    output.print("<input type=\"radio\" class=\"option-input radio\" value=\"blue\" name=\"Blue\" ");
+    output.print (isThisOn("blue"));
+    output.print("/>");
+    output.print("Blue\n");
+    output.print ("</label>\n");
+    output.print ("</div>\n</div>\n</div>\n");
+    return true;
+    }else if (strcmp (param, "BOUNCER")==0 ){
+      
 
-    return buttons;
+      
+    }else{
+    return false; 
   }
-  return String();
 }
+
+
 
 String outputState(int number){
   if (ledState == 1){
@@ -526,4 +560,3 @@ fadeToBlackBy( leds_2, NUM_LEDS_2 20);
 
 
 */
-
